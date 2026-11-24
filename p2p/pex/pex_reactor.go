@@ -506,8 +506,12 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	if r.book.NeedMoreAddrs() {
 
 		// 1) Pick a random peer and ask for more.
+		// Only on the periodic tick. The untimed ensurePeers(false) that runs
+		// after a seed reply could otherwise send a second request to the same
+		// peer within minReceiveRequestInterval, and that peer would disconnect
+		// and ban us (cometbft#4644, lost on this branch by #5360).
 		peer := r.Switch.Peers().Random()
-		if peer != nil {
+		if peer != nil && ensurePeersPeriodElapsed {
 			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
 			r.RequestAddrs(peer)
 		}

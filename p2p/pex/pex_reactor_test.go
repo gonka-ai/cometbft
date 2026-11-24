@@ -201,6 +201,31 @@ func TestPEXReactorAddrsMessageAbuse(t *testing.T) {
 	assert.True(t, book.IsBanned(peer.SocketAddr()))
 }
 
+// Regression test for cometbft#4644. The untimed ensurePeers(false) that runs
+// right after a seed replies must not send a PEX request. Otherwise the same
+// peer can receive two requests within minReceiveRequestInterval, and it
+// disconnects and bans us with "sent next PEX request too soon".
+func TestPEXReactorEnsurePeersRequestsAddrsOnlyOnTick(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(r)
+	sw.SetAddrBook(book)
+
+	peer := mock.NewPeer(nil)
+	p2p.AddPeerToSwitchPeerSet(sw, peer)
+	require.True(t, sw.Peers().Has(peer.ID()))
+	require.True(t, book.NeedMoreAddrs())
+
+	id := string(peer.ID())
+
+	r.ensurePeers(false)
+	assert.False(t, r.requestsSent.Has(id), "untimed ensurePeers must not request addrs")
+
+	r.ensurePeers(true)
+	assert.True(t, r.requestsSent.Has(id), "periodic ensurePeers should request addrs")
+}
+
 func TestCheckSeeds(t *testing.T) {
 	// directory to store address books
 	dir, err := os.MkdirTemp("", "pex_reactor")
